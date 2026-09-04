@@ -1,7 +1,14 @@
 const { DatabaseSync } = require('node:sqlite');
 const path = require('path');
+const fs = require('fs');
 
-const raw = new DatabaseSync(path.join(__dirname, 'babyshop.db'));
+// DATA_DIR указывает, где хранить базу данных. На Railway сюда нужно примонтировать
+// постоянный Volume (иначе база стирается при каждом новом деплое!). Локально,
+// если переменная не задана, база просто лежит рядом с кодом, как раньше.
+const dataDir = process.env.DATA_DIR || __dirname;
+if (!fs.existsSync(dataDir)) fs.mkdirSync(dataDir, { recursive: true });
+
+const raw = new DatabaseSync(path.join(dataDir, 'babyshop.db'));
 raw.exec('PRAGMA journal_mode = WAL;');
 
 // Обёртка, повторяющая привычный API better-sqlite3 (prepare().get/.all/.run),

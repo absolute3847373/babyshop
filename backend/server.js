@@ -13,6 +13,11 @@ require('./seed_categories');
 require('./seed_products');
 
 const app = express();
+// Railway (и большинство облачных хостингов) работает через прокси и передаёт
+// реальный IP клиента в заголовке X-Forwarded-For. Без этой настройки Express
+// не доверяет этому заголовку, и express-rate-limit падает с ошибкой
+// ERR_ERL_UNEXPECTED_X_FORWARDED_FOR на каждом запросе к /login и /register.
+app.set('trust proxy', 1);
 app.use(cors());
 app.use(express.json());
 
@@ -25,7 +30,15 @@ const authLimiter = rateLimit({
   standardHeaders: true,
   legacyHeaders: false,
 });
-app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+const fs = require('fs');
+// DATA_DIR — та же переменная, что и в db.js: на Railway сюда монтируется
+// постоянный Volume, чтобы загруженные фото не стирались при каждом деплое.
+const dataDir = process.env.DATA_DIR || __dirname;
+const uploadsDir = path.join(dataDir, 'uploads');
+if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
+
+app.use('/uploads', express.static(uploadsDir));
 app.use('/webapp', express.static(path.join(__dirname, 'webapp')));
 app.use('/admin', express.static(path.join(__dirname, 'admin')));
 
@@ -34,15 +47,10 @@ app.get('/', (req, res) => {
 });
 
 const storage = multer.diskStorage({
-  destination: (req, file, cb) => cb(null, path.join(__dirname, 'uploads')),
+  destination: (req, file, cb) => cb(null, uploadsDir),
   filename: (req, file, cb) => cb(null, uuidv4() + path.extname(file.originalname)),
 });
 const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 } });
-
-const fs = require('fs');
-if (!fs.existsSync(path.join(__dirname, 'uploads'))) {
-  fs.mkdirSync(path.join(__dirname, 'uploads'));
-}
 
 // ---------- helpers ----------
 function requireAdmin(req, res, next) {
