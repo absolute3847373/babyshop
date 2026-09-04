@@ -68,12 +68,23 @@
   initTheme();
   initTelegram();
 
-  const currentUser = getCurrentUser();
-  if (!currentUser || currentUser.role !== 'superuser') {
-    location.href = 'profile.html';
-  }
-
   let allUsers = [];
+
+  async function checkAccessAndLoad() {
+    // Сверяем роль с сервером на случай, если superuser был назначен позже
+    // регистрации (например, переменные OWNER/BROTHER_TELEGRAM_ID выставили
+    // уже после того, как человек зарегистрировался и вошёл) — иначе старая
+    // роль "customer" из localStorage навсегда закроет доступ к разделу.
+    const fresh = await refreshCurrentUser();
+    const currentUser = fresh || getCurrentUser();
+
+    if (!currentUser || currentUser.role !== 'superuser') {
+      location.href = 'profile.html';
+      return;
+    }
+
+    load();
+  }
 
   function renderAvatar(u) {
     if (u.avatar_url) return `<div class="user-avatar"><img src="${u.avatar_url}"></div>`;
@@ -125,7 +136,7 @@
     renderUsers(filtered);
   });
 
-  load();
+  checkAccessAndLoad();
 </script>
 </body>
 </html>

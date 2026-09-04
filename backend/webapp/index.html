@@ -12,12 +12,6 @@
 <body>
 
 <div class="container page-transition">
-  <div class="top-header-bar" id="topHeaderBar" style="display:none;">
-    <button class="logout-btn" id="logoutBtn">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4M16 17l5-5-5-5M21 12H9"/></svg>
-      <span id="logoutLabel">Выйти</span>
-    </button>
-  </div>
   <div class="hero">
     <div class="hero-logo">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
@@ -79,19 +73,6 @@
   document.getElementById('contactTitle').textContent = t('contact_us');
 
   mountBottomNav('home');
-
-  const currentUser = getCurrentUser();
-  if (currentUser) {
-    document.getElementById('topHeaderBar').style.display = 'flex';
-  }
-  document.getElementById('logoutLabel').textContent = getLang() === 'uz' ? 'Chiqish' : (getLang() === 'en' ? 'Log out' : 'Выйти');
-  document.getElementById('logoutBtn').addEventListener('click', () => {
-    const confirmText = getLang() === 'uz' ? 'Chiqishni tasdiqlaysizmi?' : (getLang() === 'en' ? 'Log out of your account?' : 'Выйти из аккаунта?');
-    if (confirm(confirmText)) {
-      logout();
-      location.reload();
-    }
-  });
 </script>
 </body>
 </html>

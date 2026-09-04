@@ -273,6 +273,28 @@ app.post('/api/login', authLimiter, (req, res) => {
   res.json(decryptUser(safeUser));
 });
 
+// Отдаёт актуальные данные текущего пользователя (используется, чтобы Mini App
+// подхватил изменение роли superuser или другие изменения без необходимости
+// заново вводить логин/пароль). Если передан свежий telegram_id — тут же
+// пересчитывает роль, так же как это делает /api/login.
+app.get('/api/users/me', requireUser, (req, res) => {
+  const telegram_id = req.headers['x-telegram-id'];
+  const user = req.currentUser;
+
+  if (telegram_id) {
+    const shouldBeSuperuser = isSuperuserTelegramId(telegram_id);
+    const newRole = shouldBeSuperuser ? 'superuser' : (user.role === 'superuser' ? 'customer' : user.role);
+    if (telegram_id !== user.telegram_id || newRole !== user.role) {
+      db.prepare('UPDATE users SET telegram_id = ?, role = ? WHERE id = ?').run(telegram_id, newRole, user.id);
+      user.telegram_id = telegram_id;
+      user.role = newRole;
+    }
+  }
+
+  const { password_hash, ...safeUser } = user;
+  res.json(decryptUser(safeUser));
+});
+
 app.put('/api/users/:id', requireUser, upload.single('avatar'), (req, res) => {
   if (String(req.currentUser.id) !== String(req.params.id)) {
     return res.status(403).json({ error: 'forbidden' });

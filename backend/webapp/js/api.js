@@ -2,7 +2,11 @@ const API_BASE = window.location.origin.replace(/\/webapp.*$/, '') + '/api';
 
 function authHeaders() {
   const user = getCurrentUser();
-  return user ? { 'x-user-id': user.id } : {};
+  if (!user) return {};
+  const headers = { 'x-user-id': user.id };
+  const tgId = getTelegramId();
+  if (tgId) headers['x-telegram-id'] = tgId;
+  return headers;
 }
 
 async function apiGet(path, opts = {}) {
@@ -85,6 +89,27 @@ function isSuperuser() {
 
 function logout() {
   localStorage.removeItem('babyshop_user');
+}
+
+// Тихо сверяет локальные данные пользователя (включая роль superuser) с сервером.
+// Нужно вызывать при открытии каждой страницы, если пользователь залогинен —
+// иначе смена роли или other-серверные изменения не долетят до старой сессии
+// в localStorage, пока человек не выйдет и не зайдёт заново вручную.
+async function refreshCurrentUser() {
+  const user = getCurrentUser();
+  if (!user) return null;
+  try {
+    const fresh = await apiGet('/users/me', { auth: true });
+    setCurrentUser(fresh);
+    return fresh;
+  } catch (err) {
+    // Если сервер ответил unauthorized — значит аккаунт был удалён или сессия
+    // больше не валидна, разлогиниваем локально, чтобы не зависать в тупике.
+    if (err.message === 'unauthorized') {
+      logout();
+    }
+    return null;
+  }
 }
 
 function getCart() {

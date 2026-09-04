@@ -165,24 +165,24 @@ button {
 }
 
 .fade-in {
-  animation: fadeIn 0.22s var(--ease-smooth) both;
+  animation: fadeIn 0.12s var(--ease-smooth) both;
 }
 @keyframes fadeIn {
   from { opacity: 0; transform: translateY(10px); }
   to { opacity: 1; transform: translateY(0); }
 }
 
-.stagger > * { animation: fadeIn 0.22s var(--ease-smooth) both; }
-.stagger > *:nth-child(1) { animation-delay: 0.01s; }
-.stagger > *:nth-child(2) { animation-delay: 0.03s; }
-.stagger > *:nth-child(3) { animation-delay: 0.05s; }
-.stagger > *:nth-child(4) { animation-delay: 0.07s; }
-.stagger > *:nth-child(5) { animation-delay: 0.09s; }
-.stagger > *:nth-child(6) { animation-delay: 0.11s; }
+.stagger > * { animation: fadeIn 0.12s var(--ease-smooth) both; }
+.stagger > *:nth-child(1) { animation-delay: 0.005s; }
+.stagger > *:nth-child(2) { animation-delay: 0.015s; }
+.stagger > *:nth-child(3) { animation-delay: 0.025s; }
+.stagger > *:nth-child(4) { animation-delay: 0.035s; }
+.stagger > *:nth-child(5) { animation-delay: 0.045s; }
+.stagger > *:nth-child(6) { animation-delay: 0.055s; }
 
 /* Плавный переход между страницами (весь контейнер) */
 .page-transition {
-  animation: pageIn 0.18s var(--ease-smooth) both;
+  animation: pageIn 0.1s var(--ease-smooth) both;
 }
 @keyframes pageIn {
   from { opacity: 0; transform: translateY(6px) scale(0.995); }
