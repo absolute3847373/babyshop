@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Настройки конфиденциальности — Babyshop</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="css/theme.css?v=2">
+<style>
+  .back-btn {
+    display: inline-flex; align-items: center; gap: 6px; padding: 16px 0 8px;
+    color: var(--text-secondary); font-size: 14px; font-weight: 500;
+  }
+  .back-btn svg { width: 18px; height: 18px; }
+  .form-group { margin-bottom: 14px; }
+  .encrypted-note {
+    display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-muted);
+    margin-top: 20px; padding: 12px; background: var(--bg-elev); border-radius: var(--radius-sm);
+  }
+  .encrypted-note svg { width: 16px; height: 16px; flex-shrink: 0; color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="container page-transition">
+  <a href="profile.html" class="back-btn">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+    <span id="backLabel">Профиль</span>
+  </a>
+
+  <h1 style="font-size:20px; font-weight:700; padding:8px 0 20px;" id="pageTitle">Настройки конфиденциальности</h1>
+
+  <div class="card" style="padding:16px;">
+    <div class="form-group">
+      <label class="label" id="lblRecipient">Имя получателя</label>
+      <input class="input" id="recipientName">
+    </div>
+    <div class="form-group">
+      <label class="label" id="lblPharmacy">Название аптеки</label>
+      <input class="input" id="pharmacyName">
+    </div>
+    <div class="form-group">
+      <label class="label" id="lblContact">Контактное лицо</label>
+      <input class="input" id="contactPerson">
+    </div>
+    <div class="form-group">
+      <label class="label" id="lblAddress">Адрес</label>
+      <input class="input" id="address">
+    </div>
+    <div class="form-group">
+      <label class="label" id="lblCity">Город</label>
+      <input class="input" id="city">
+    </div>
+    <div class="form-group">
+      <label class="label" id="lblDistrict">Район</label>
+      <input class="input" id="district">
+    </div>
+    <button class="btn btn-primary btn-block" id="saveBtn">Сохранить</button>
+
+    <div class="encrypted-note">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l8 4v6c0 5-3.5 8.5-8 10-4.5-1.5-8-5-8-10V6l8-4z"/></svg>
+      <span id="encryptedNoteText">Эти данные хранятся в зашифрованном виде и не передаются третьим лицам</span>
+    </div>
+  </div>
+</div>
+
+<script src="js/i18n.js?v=2"></script>
+<script src="js/theme.js?v=2"></script>
+<script src="js/api.js?v=2"></script>
+<script>
+  initTheme();
+  initTelegram();
+
+  const user = getCurrentUser();
+  if (!user) location.href = 'auth.html?redirect=privacy-settings.html';
+
+  const NOTE_TEXT = {
+    ru: 'Эти данные хранятся в зашифрованном виде и не передаются третьим лицам',
+    uz: 'Ushbu ma\'lumotlar shifrlangan holda saqlanadi va uchinchi shaxslarga berilmaydi',
+    en: 'This data is stored encrypted and is not shared with third parties',
+  };
+
+  function applyLabels() {
+    document.getElementById('backLabel').textContent = t('nav_profile');
+    document.getElementById('pageTitle').textContent = t('privacy_settings');
+    document.getElementById('lblRecipient').textContent = t('recipient_name');
+    document.getElementById('lblPharmacy').textContent = t('order_pharmacy');
+    document.getElementById('lblContact').textContent = t('order_contact');
+    document.getElementById('lblAddress').textContent = t('order_address');
+    document.getElementById('lblCity').textContent = t('city');
+    document.getElementById('lblDistrict').textContent = t('district');
+    document.getElementById('saveBtn').textContent = t('save');
+    document.getElementById('encryptedNoteText').textContent = NOTE_TEXT[getLang()] || NOTE_TEXT.ru;
+  }
+
+  if (user) {
+    document.getElementById('recipientName').value = user.recipient_name || '';
+    document.getElementById('pharmacyName').value = user.pharmacy_name || '';
+    document.getElementById('contactPerson').value = user.contact_person || '';
+    document.getElementById('address').value = user.address || '';
+    document.getElementById('city').value = user.city || '';
+    document.getElementById('district').value = user.district || '';
+
+    document.getElementById('saveBtn').addEventListener('click', async () => {
+      const updated = {
+        recipient_name: document.getElementById('recipientName').value,
+        pharmacy_name: document.getElementById('pharmacyName').value,
+        contact_person: document.getElementById('contactPerson').value,
+        address: document.getElementById('address').value,
+        city: document.getElementById('city').value,
+        district: document.getElementById('district').value,
+      };
+      try {
+        const formData = new FormData();
+        Object.entries(updated).forEach(([k, v]) => formData.append(k, v));
+        const saved = await apiPutForm('/users/' + user.id, formData);
+        setCurrentUser(saved);
+        alert(t('save') + ' ✓');
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  }
+
+  applyLabels();
+</script>
+</body>
+</html>

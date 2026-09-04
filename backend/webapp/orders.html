@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Мои заказы — Babyshop</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="css/theme.css?v=2">
+<link rel="stylesheet" href="css/nav.css?v=2">
+<style>
+  .order-card { padding: 16px; margin-bottom: 12px; }
+  .order-head { display:flex; justify-content:space-between; align-items:center; margin-bottom: 10px; gap: 8px; }
+  .order-id { font-weight: 600; font-size: 14px; }
+  .order-status { font-size: 12px; padding: 4px 10px; border-radius: 12px; font-weight: 500; white-space: nowrap; }
+  .status-new { background: var(--brand-mint-100); color: var(--brand-teal-700); }
+  [data-theme="dark"] .status-new { background: rgba(53,194,168,0.15); color: var(--accent); }
+  .status-confirmed { background: rgba(47,143,91,0.12); color: var(--success); }
+  .status-rejected { background: rgba(239,106,106,0.12); color: var(--danger); }
+  .order-items-list { font-size: 13px; color: var(--text-secondary); margin-bottom: 12px; }
+  .order-items-list div { padding: 2px 0; }
+  .order-meta { font-size: 12px; color: var(--text-muted); margin-bottom: 10px; }
+  .order-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .order-actions button { flex: 1; min-width: 120px; font-size: 13px; padding: 10px 12px; }
+
+  .view-toggle { display: flex; gap: 8px; margin-bottom: 16px; }
+  .view-toggle button {
+    padding: 8px 16px; border-radius: 20px; border: 1px solid var(--border-strong);
+    background: var(--bg-card); font-size: 13px; font-weight: 500; color: var(--text-secondary);
+    transition: all 0.2s var(--ease-smooth);
+  }
+  .view-toggle button.active { background: var(--accent); color: var(--accent-text); border-color: transparent; }
+</style>
+</head>
+<body>
+
+<div class="container page-transition">
+  <h1 style="font-size:20px; font-weight:700; padding:16px 0 4px;" id="pageTitle">Мои заказы</h1>
+  <div class="view-toggle" id="viewToggle" style="display:none;">
+    <button data-view="mine" class="active" id="btnMine">Мои заказы</button>
+    <button data-view="all" id="btnAll">Все заказы</button>
+  </div>
+  <div id="ordersRoot"></div>
+</div>
+
+<script src="js/i18n.js?v=2"></script>
+<script src="js/theme.js?v=2"></script>
+<script src="js/api.js?v=2"></script>
+<script src="js/nav.js?v=2"></script>
+<script>
+  initTheme();
+  initTelegram();
+  document.getElementById('pageTitle').textContent = t('my_orders');
+
+  const user = getCurrentUser();
+  const root = document.getElementById('ordersRoot');
+  let currentView = 'mine';
+
+  const STATUS_LABELS = {
+    new: () => t('order_status_new'),
+    owner_confirmed: () => t('order_status_owner_confirmed'),
+    rejected: () => t('order_status_rejected'),
+    delivered: () => t('order_status_delivered'),
+    client_confirmed: () => t('order_status_client_confirmed'),
+  };
+  const STATUS_CLASS = {
+    new: 'status-new',
+    owner_confirmed: 'status-new',
+    rejected: 'status-rejected',
+    delivered: 'status-new',
+    client_confirmed: 'status-confirmed',
+  };
+
+  async function confirmOrder(id) {
+    await apiPost('/orders/' + id + '/confirm', {}, { auth: true });
+    load();
+  }
+
+  async function ownerConfirm(id) {
+    await apiPost('/orders/' + id + '/owner-confirm', {}, { auth: true });
+    load();
+  }
+  async function ownerReject(id) {
+    const reason = prompt('Причина отклонения (необязательно):') || '';
+    await apiPost('/orders/' + id + '/reject', { reason }, { auth: true });
+    load();
+  }
+  async function ownerDeliver(id) {
+    await apiPost('/orders/' + id + '/deliver', {}, { auth: true });
+    load();
+  }
+  async function ownerDelete(id) {
+    if (!confirm('Удалить заказ #' + id + '? Действие необратимо.')) return;
+    await apiDelete('/orders/' + id, { auth: true });
+    load();
+  }
+
+  function renderOrderCard(o, isSuperuserView) {
+    const statusFn = STATUS_LABELS[o.status] || (() => o.status);
+    const statusClass = STATUS_CLASS[o.status] || 'status-new';
+
+    const customerMeta = isSuperuserView
+      ? `<div class="order-meta">${o.pharmacy_name || ''} · ${o.customer_phone || ''}</div>`
+      : '';
+
+    let actions = '';
+    if (isSuperuserView) {
+      if (o.status === 'new') {
+        actions = `
+          <div class="order-actions">
+            <button class="btn btn-primary" onclick="ownerConfirm(${o.id})">${t('owner_confirm_action')}</button>
+            <button class="btn" onclick="ownerReject(${o.id})">${t('owner_reject_action')}</button>
+          </div>`;
+      } else if (o.status === 'owner_confirmed') {
+        actions = `
+          <div class="order-actions">
+            <button class="btn btn-primary" onclick="ownerDeliver(${o.id})">${t('owner_deliver_action')}</button>
+          </div>`;
+      }
+      actions += `
+        <div class="order-actions">
+          <button class="btn-danger" onclick="ownerDelete(${o.id})">${t('owner_delete_action')}</button>
+        </div>`;
+    } else if (o.status === 'delivered') {
+      actions = `<button class="btn btn-block" onclick="confirmOrder(${o.id})">${t('confirm_received')}</button>`;
+    }
+
+    return `
+      <div class="card order-card fade-in">
+        <div class="order-head">
+          <span class="order-id">#${o.id}</span>
+          <span class="order-status ${statusClass}">${statusFn()}</span>
+        </div>
+        ${customerMeta}
+        <div class="order-items-list">
+          ${o.items.map(i => `<div>${i.name} × ${i.qty}</div>`).join('')}
+        </div>
+        ${actions}
+      </div>
+    `;
+  }
+
+  async function load() {
+    if (!user) {
+      root.innerHTML = `<div class="card fade-in" style="padding:20px;text-align:center;"><a href="auth.html?redirect=orders.html" class="btn btn-primary btn-block">${t('login')}</a></div>`;
+      return;
+    }
+
+    if (isSuperuser()) {
+      document.getElementById('viewToggle').style.display = 'flex';
+    }
+
+    const endpoint = currentView === 'all' && isSuperuser() ? '/orders/all' : '/orders/mine';
+    const orders = await apiGet(endpoint, { auth: true });
+
+    if (!orders.length) {
+      root.innerHTML = `<div style="text-align:center;padding:60px 20px;color:var(--text-muted);">—</div>`;
+      return;
+    }
+
+    root.innerHTML = orders.map(o => renderOrderCard(o, currentView === 'all')).join('');
+  }
+
+  document.getElementById('btnMine').addEventListener('click', () => {
+    currentView = 'mine';
+    document.getElementById('btnMine').classList.add('active');
+    document.getElementById('btnAll').classList.remove('active');
+    load();
+  });
+  document.getElementById('btnAll').addEventListener('click', () => {
+    currentView = 'all';
+    document.getElementById('btnAll').classList.add('active');
+    document.getElementById('btnMine').classList.remove('active');
+    load();
+  });
+
+  load();
+  mountBottomNav('orders');
+</script>
+</body>
+</html>

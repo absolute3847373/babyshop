@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Babyshop — Заказы</title>
+<link rel="stylesheet" href="../webapp/css/theme.css">
+<style>
+  .admin-header { display:flex; justify-content:space-between; align-items:center; padding: 20px 0; }
+  .admin-nav-tabs { display:flex; gap:8px; margin-bottom: 16px; }
+  .admin-nav-tabs a { padding: 8px 16px; border-radius: var(--radius-sm); font-size: 14px; color: var(--text-secondary); }
+  .admin-nav-tabs a.active { background: var(--accent); color: var(--accent-text); }
+
+  .order-card { padding: 18px; margin-bottom: 14px; }
+  .order-top { display:flex; justify-content:space-between; align-items:flex-start; margin-bottom: 12px; }
+  .order-id-date { font-weight: 600; font-size: 15px; }
+  .order-date-sub { font-size: 12px; color: var(--text-muted); font-weight: 400; margin-top: 2px; }
+  .order-status-badge { font-size: 12px; padding: 4px 12px; border-radius: 12px; font-weight: 500; white-space: nowrap; }
+  .status-new { background: var(--brand-mint-100); color: var(--brand-teal-700); }
+  .status-confirmed { background: rgba(47,143,91,0.12); color: var(--success); }
+
+  .order-grid { display:grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 14px; }
+  .order-field-label { font-size: 11px; color: var(--text-muted); text-transform: uppercase; margin-bottom: 2px; }
+  .order-field-value { font-size: 14px; }
+
+  .order-items-table { width:100%; font-size: 13px; border-collapse: collapse; margin-top: 6px; }
+  .order-items-table td { padding: 6px 0; border-bottom: 1px solid var(--border); }
+  .order-items-table tr:last-child td { border-bottom: none; }
+
+  .logs-toggle { font-size: 12px; color: var(--accent); cursor: pointer; margin-top: 10px; display: inline-block; }
+  .logs-list { display: none; margin-top: 10px; font-size: 12px; color: var(--text-muted); background: var(--bg-elev); border-radius: var(--radius-sm); padding: 10px; }
+  .logs-list.open { display: block; }
+  .logs-list div { padding: 3px 0; }
+
+  .empty-orders { text-align:center; padding: 60px 20px; color: var(--text-muted); }
+</style>
+</head>
+<body>
+
+<div class="container" style="max-width: 900px;">
+  <div class="admin-header">
+    <h1 style="font-size:20px;font-weight:700;">Заказы</h1>
+  </div>
+  <div class="admin-nav-tabs">
+    <a href="dashboard.html">Товары</a>
+    <a href="orders.html" class="active">Заказы</a>
+  </div>
+
+  <div id="ordersRoot"></div>
+</div>
+
+<script src="js/admin-auth.js"></script>
+<script>
+  requireAdminAuth();
+
+  const statusLabel = (s) => s === 'confirmed' ? 'Получено клиентом' : 'В обработке';
+
+  async function loadOrders() {
+    const res = await adminFetch('/admin/orders');
+    const orders = await res.json();
+    render(orders);
+  }
+
+  function render(orders) {
+    const root = document.getElementById('ordersRoot');
+    if (!orders.length) {
+      root.innerHTML = `<div class="empty-orders">Заказов пока нет</div>`;
+      return;
+    }
+
+    root.innerHTML = orders.map(o => `
+      <div class="card order-card">
+        <div class="order-top">
+          <div class="order-id-date">
+            Заказ #${o.id}
+            <div class="order-date-sub">${new Date(o.created_at).toLocaleString('ru-RU')}</div>
+          </div>
+          <span class="order-status-badge ${o.status === 'confirmed' ? 'status-confirmed' : 'status-new'}">${statusLabel(o.status)}</span>
+        </div>
+
+        <div class="order-grid">
+          <div>
+            <div class="order-field-label">Аптека</div>
+            <div class="order-field-value">${o.pharmacy_name || '—'}</div>
+          </div>
+          <div>
+            <div class="order-field-label">Контактное лицо</div>
+            <div class="order-field-value">${o.contact_person || '—'}</div>
+          </div>
+          <div>
+            <div class="order-field-label">Телефон</div>
+            <div class="order-field-value">${o.contact_phone || '—'}</div>
+          </div>
+          <div>
+            <div class="order-field-label">Адрес</div>
+            <div class="order-field-value">${o.address || '—'}</div>
+          </div>
+        </div>
+
+        <div class="order-field-label">Товары</div>
+        <table class="order-items-table">
+          ${o.items.map(i => `<tr><td>${i.name}</td><td>× ${i.qty}</td><td>${i.price === 'error404' ? '' : i.price}</td></tr>`).join('')}
+        </table>
+
+        ${o.total_text ? `<div style="margin-top:10px; font-weight:600;">Итого: ${o.total_text}</div>` : ''}
+
+        <span class="logs-toggle" onclick="toggleLogs(${o.id})">Показать историю / логи →</span>
+        <div class="logs-list" id="logs-${o.id}"></div>
+      </div>
+    `).join('');
+  }
+
+  async function toggleLogs(orderId) {
+    const el = document.getElementById('logs-' + orderId);
+    const isOpen = el.classList.contains('open');
+    if (isOpen) {
+      el.classList.remove('open');
+      return;
+    }
+    if (!el.dataset.loaded) {
+      const res = await adminFetch('/admin/orders/' + orderId + '/logs');
+      const logs = await res.json();
+      el.innerHTML = logs.map(l => `<div>${new Date(l.created_at).toLocaleString('ru-RU')} — ${l.event}</div>`).join('') || '<div>Логов нет</div>';
+      el.dataset.loaded = '1';
+    }
+    el.classList.add('open');
+  }
+
+  loadOrders();
+</script>
+</body>
+</html>

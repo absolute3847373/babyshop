@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Оформление заказа — Babyshop</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<link rel="stylesheet" href="css/theme.css?v=2">
+<link rel="stylesheet" href="css/nav.css?v=2">
+<style>
+  .form-group { margin-bottom: 16px; }
+  .order-items-preview { margin-bottom: 24px; }
+  .order-item-row { display:flex; justify-content:space-between; padding:10px 0; border-bottom:1px solid var(--border); font-size:14px; }
+  .order-item-row:last-child { border-bottom:none; }
+</style>
+</head>
+<body>
+
+<div class="container page-transition">
+  <h1 style="font-size:20px; font-weight:700; padding:16px 0 20px;" id="pageTitle">Оформление заказа</h1>
+
+  <div class="card" style="padding:16px; margin-bottom:20px;">
+    <div class="order-items-preview" id="itemsPreview"></div>
+  </div>
+
+  <div id="authGate"></div>
+
+  <form id="checkoutForm" style="display:none;">
+    <div class="form-group">
+      <label class="label" id="lblPharmacy">Название аптеки</label>
+      <input class="input" id="pharmacyName" required>
+    </div>
+    <div class="form-group">
+      <label class="label" id="lblAddress">Адрес доставки</label>
+      <input class="input" id="address" required>
+    </div>
+    <div class="form-group">
+      <label class="label" id="lblContact">Контактное лицо</label>
+      <input class="input" id="contactPerson" required>
+    </div>
+    <div class="form-group">
+      <label class="label" id="lblPhone">Рабочий номер для подтверждения</label>
+      <input class="input" id="contactPhone" type="tel" required>
+    </div>
+    <button type="submit" class="btn btn-primary btn-block" id="submitBtn">Отправить заказ</button>
+  </form>
+
+  <div id="successMsg" class="card fade-in" style="display:none; padding:24px; text-align:center;"></div>
+</div>
+
+<script src="js/i18n.js?v=2"></script>
+<script src="js/theme.js?v=2"></script>
+<script src="js/api.js?v=2"></script>
+<script src="js/nav.js?v=2"></script>
+<script>
+  initTheme();
+  initTelegram();
+
+  document.getElementById('pageTitle').textContent = t('checkout');
+  document.getElementById('lblPharmacy').textContent = t('order_pharmacy');
+  document.getElementById('lblAddress').textContent = t('order_address');
+  document.getElementById('lblContact').textContent = t('order_contact');
+  document.getElementById('lblPhone').textContent = t('order_phone');
+  document.getElementById('submitBtn').textContent = t('order_submit');
+
+  const cart = getCart();
+  const user = getCurrentUser();
+
+  document.getElementById('itemsPreview').innerHTML = cart.map(i => `
+    <div class="order-item-row"><span>${i.name} × ${i.qty}</span><span>${i.price === 'error404' ? '' : i.price}</span></div>
+  `).join('');
+
+  if (!user) {
+    document.getElementById('authGate').innerHTML = `
+      <div class="card fade-in" style="padding:20px; text-align:center;">
+        <p style="margin-bottom:16px; color:var(--text-secondary);">${t('login')} / ${t('register')}</p>
+        <a href="auth.html?redirect=checkout.html" class="btn btn-primary btn-block">${t('login')}</a>
+      </div>
+    `;
+  } else {
+    document.getElementById('checkoutForm').style.display = 'block';
+    document.getElementById('pharmacyName').value = user.pharmacy_name || '';
+    document.getElementById('address').value = user.address || '';
+    document.getElementById('contactPerson').value = user.contact_person || '';
+
+    document.getElementById('checkoutForm').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const items = cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price, weight: i.weight }));
+      const hasRealPrice = items.some(i => i.price !== 'error404');
+      let total = 0;
+      items.forEach(i => {
+        const num = parseFloat(String(i.price).replace(/[^\d.]/g, ''));
+        if (!isNaN(num)) total += num * i.qty;
+      });
+
+      try {
+        await apiPost('/orders', {
+          items,
+          total_text: hasRealPrice ? String(total) : null,
+          address: document.getElementById('address').value,
+          pharmacy_name: document.getElementById('pharmacyName').value,
+          contact_person: document.getElementById('contactPerson').value,
+          contact_phone: document.getElementById('contactPhone').value,
+        }, { auth: true });
+
+        clearCart();
+        document.getElementById('checkoutForm').style.display = 'none';
+        const successEl = document.getElementById('successMsg');
+        successEl.style.display = 'block';
+        successEl.textContent = t('order_success');
+      } catch (err) {
+        alert(err.message);
+      }
+    });
+  }
+
+  mountBottomNav('cart');
+</script>
+</body>
+</html>
