@@ -534,6 +534,111 @@ app.get('/api/orders/:id/logs', requireUser, (req, res) => {
 });
 
 // ---------- ADMIN PANEL: заказы (для веб-админки, отдельно от Mini App superuser) ----------
+// ---------- ADMIN PANEL: управление пользователями ----------
+// Полный доступ к аккаунтам через админ-панель (вход по ADMIN_LOGIN/ADMIN_PASSWORD).
+// Нужен на случай проблем со входом через Mini App, миграции базы данных,
+// тестовых аккаунтов и т.п. — чтобы не зависеть от Telegram-логики для базового
+// администрирования пользователей.
+app.get('/api/admin/users', requireAdmin, (req, res) => {
+  const rows = db.prepare('SELECT * FROM users ORDER BY created_at DESC').all();
+  const safe = rows.map(u => {
+    const { password_hash, ...rest } = u;
+    return decryptUser(rest);
+  });
+  res.json(safe);
+});
+
+app.get('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const user = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!user) return res.status(404).json({ error: 'not found' });
+  const { password_hash, ...safe } = user;
+  res.json(decryptUser(safe));
+});
+
+// Создать пользователя вручную (например пересоздать аккаунт разработчика после
+// смены базы данных, сохранив прежние данные вроде имени/аптеки).
+app.post('/api/admin/users', requireAdmin, (req, res) => {
+  const body = req.body || {};
+  const phone = normalizePhone(body.phone);
+  if (!phone || !body.password) {
+    return res.status(400).json({ error: 'phone_and_password_required' });
+  }
+
+  const existing = db.prepare('SELECT id FROM users WHERE phone = ?').get(phone);
+  if (existing) return res.status(409).json({ error: 'phone_already_registered' });
+
+  const password_hash = bcrypt.hashSync(body.password, 12);
+  const role = body.role === 'superuser' ? 'superuser' : 'customer';
+  const enc = encryptUserFields({
+    address: body.address || '',
+    contact_person: body.contact_person || '',
+    recipient_name: body.recipient_name || '',
+  });
+
+  const result = db.prepare(`
+    INSERT INTO users (
+      phone, password_hash, telegram_id, role, recipient_name, pharmacy_name, contact_person,
+      address, city, district, language, terms_accepted_at, terms_version
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?)
+  `).run(
+    phone, password_hash, body.telegram_id || null, role, enc.recipient_name,
+    body.pharmacy_name || '', enc.contact_person, enc.address,
+    body.city || '', body.district || '', body.language || 'ru', 'admin_created_v1'
+  );
+
+  res.json({ id: result.lastInsertRowid });
+});
+
+// Редактировать любые поля пользователя (включая роль и telegram_id).
+// Пароль меняется отдельным полем new_password, только если он передан.
+app.put('/api/admin/users/:id', requireAdmin, (req, res) => {
+  const existing = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  if (!existing) return res.status(404).json({ error: 'not found' });
+
+  const body = req.body || {};
+  const enc = encryptUserFields({
+    address: body.address !== undefined ? body.address : undefined,
+    contact_person: body.contact_person !== undefined ? body.contact_person : undefined,
+    recipient_name: body.recipient_name !== undefined ? body.recipient_name : undefined,
+  });
+
+  const newPasswordHash = body.new_password
+    ? bcrypt.hashSync(body.new_password, 12)
+    : existing.password_hash;
+
+  const newPhone = body.phone !== undefined ? normalizePhone(body.phone) : existing.phone;
+
+  db.prepare(`
+    UPDATE users SET
+      phone=?, password_hash=?, telegram_id=?, role=?, recipient_name=?, pharmacy_name=?,
+      contact_person=?, address=?, city=?, district=?, language=?
+    WHERE id=?
+  `).run(
+    newPhone,
+    newPasswordHash,
+    body.telegram_id !== undefined ? body.telegram_id : existing.telegram_id,
+    body.role !== undefined ? body.role : existing.role,
+    enc.recipient_name !== undefined ? enc.recipient_name : existing.recipient_name,
+    body.pharmacy_name !== undefined ? body.pharmacy_name : existing.pharmacy_name,
+    enc.contact_person !== undefined ? enc.contact_person : existing.contact_person,
+    enc.address !== undefined ? enc.address : existing.address,
+    body.city !== undefined ? body.city : existing.city,
+    body.district !== undefined ? body.district : existing.district,
+    body.language !== undefined ? body.language : existing.language,
+    req.params.id
+  );
+
+  const updated = db.prepare('SELECT * FROM users WHERE id = ?').get(req.params.id);
+  const { password_hash, ...safe } = updated;
+  res.json(decryptUser(safe));
+});
+
+app.delete('/api/admin/users/:id', requireAdmin, (req, res) => {
+  db.prepare('DELETE FROM users WHERE id = ?').run(req.params.id);
+  res.json({ ok: true });
+});
+
 app.get('/api/admin/orders', requireAdmin, (req, res) => {
   const rows = db.prepare('SELECT * FROM orders ORDER BY created_at DESC').all();
   res.json(rows.map(r => ({ ...decryptOrder(r), items: JSON.parse(r.items_json) })));

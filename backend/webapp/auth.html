@@ -10,6 +10,33 @@
   .auth-wrap { max-width: 400px; margin: 24px auto 0; }
   .form-group { margin-bottom: 14px; }
   .switch-link { text-align: center; margin-top: 16px; font-size: 14px; color: var(--accent); cursor: pointer; }
+
+  .error-banner {
+    display: none;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 12px 14px;
+    margin-bottom: 16px;
+    border-radius: var(--radius-sm);
+    background: rgba(239, 106, 106, 0.1);
+    border: 1px solid rgba(239, 106, 106, 0.3);
+    color: var(--danger);
+    font-size: 13px;
+    line-height: 1.4;
+    animation: fadeIn 0.15s var(--ease-smooth) both;
+  }
+  .error-banner.visible { display: flex; }
+  .error-banner svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 1px; }
+
+  .submit-loading {
+    display: inline-flex;
+    width: 16px; height: 16px;
+    border: 2px solid rgba(255,255,255,0.4);
+    border-top-color: currentColor;
+    border-radius: 50%;
+    animation: spin 0.6s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
   .extra-fields { display: none; }
   .required-mark { color: var(--danger); }
 
@@ -89,6 +116,11 @@
     </div>
 
     <h1 style="font-size:22px; font-weight:700; text-align:center; margin-bottom:24px;" id="formTitle">Вход</h1>
+
+    <div class="error-banner" id="errorBanner">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><path d="M12 8v4M12 16h.01"/></svg>
+      <span id="errorBannerText"></span>
+    </div>
 
     <form id="authForm">
       <div class="form-group">
@@ -228,8 +260,54 @@
     location.href = redirect;
   });
 
+  function showError(text) {
+    const banner = document.getElementById('errorBanner');
+    document.getElementById('errorBannerText').textContent = text;
+    banner.classList.add('visible');
+    banner.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  }
+
+  function hideError() {
+    document.getElementById('errorBanner').classList.remove('visible');
+  }
+
+  function errorMessageFor(code) {
+    const messages = {
+      invalid_credentials: {
+        ru: 'Неверный номер телефона или пароль',
+        uz: 'Telefon raqami yoki parol noto\'g\'ri',
+        en: 'Invalid phone number or password',
+      },
+      phone_already_registered: {
+        ru: 'Этот номер уже зарегистрирован. Попробуйте войти',
+        uz: 'Bu raqam allaqachon ro\'yxatdan o\'tgan. Kirishga harakat qiling',
+        en: 'This number is already registered. Try logging in',
+      },
+      too_many_attempts: {
+        ru: 'Слишком много попыток. Подождите 15 минут и попробуйте снова',
+        uz: 'Juda ko\'p urinish. 15 daqiqa kutib, qayta urinib ko\'ring',
+        en: 'Too many attempts. Wait 15 minutes and try again',
+      },
+      network_error: {
+        ru: 'Не удалось подключиться к серверу. Проверьте интернет-соединение',
+        uz: 'Serverga ulanib bo\'lmadi. Internetni tekshiring',
+        en: 'Could not connect to the server. Check your internet connection',
+      },
+    };
+    const lang = getLang();
+    return (messages[code] && (messages[code][lang] || messages[code].ru)) || code;
+  }
+
   document.getElementById('authForm').addEventListener('submit', async (e) => {
     e.preventDefault();
+    hideError();
+
+    const submitBtn = document.getElementById('submitBtn');
+    if (submitBtn.disabled) return; // защита от двойного клика/повторной отправки
+    const originalText = submitBtn.textContent;
+    submitBtn.disabled = true;
+    submitBtn.innerHTML = '<span class="submit-loading"></span>';
+
     const phone = '998' + document.getElementById('phone').value.trim().replace(/[^\d]/g, '');
     const password = document.getElementById('password').value;
     const telegram_id = getTelegramId();
@@ -240,9 +318,10 @@
         user = await apiPost('/login', { phone, password, telegram_id });
         setCurrentUser(user);
         location.href = redirect;
+        return; // не восстанавливаем кнопку — уходим со страницы
       } else {
         if (!document.getElementById('termsCheckbox').checked) {
-          alert(t('terms_required_error'));
+          showError(t('terms_required_error'));
           return;
         }
         const payload = {
@@ -262,15 +341,22 @@
         document.getElementById('successModal').classList.add('open');
       }
     } catch (err) {
-      if (err.message === 'missing_required_fields') {
-        alert(t('all_fields_required'));
+      // "Failed to fetch" — типичная ошибка сети/CORS, показываем понятный текст,
+      // а не техническую формулировку браузера.
+      if (err.message === 'Failed to fetch' || err.message.includes('NetworkError')) {
+        showError(errorMessageFor('network_error'));
+      } else if (err.message === 'missing_required_fields') {
+        showError(t('all_fields_required'));
       } else if (err.message === 'terms_not_accepted') {
-        alert(t('terms_required_error'));
+        showError(t('terms_required_error'));
+      } else if (['invalid_credentials', 'phone_already_registered', 'too_many_attempts'].includes(err.message)) {
+        showError(errorMessageFor(err.message));
       } else {
-        alert(err.message === 'invalid_credentials' ? 'Неверный телефон или пароль' :
-              err.message === 'phone_already_registered' ? 'Этот номер уже зарегистрирован' :
-              err.message);
+        showError(err.message);
       }
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = originalText;
     }
   });
 
